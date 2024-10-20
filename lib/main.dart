@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
-import 'package:home_widget/home_widget.dart';
 import 'package:flutter_carousel_widget/flutter_carousel_widget.dart';
 
 void main() {
@@ -68,7 +67,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     
     // Fetch stats when the app initializes
     _fetchStats();
-    _updateWidget();
+   
   }
 
   // New method to fetch stats
@@ -95,7 +94,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             _avatarImageUrl = 'assets/1.gif'; // Default image
           }
         });
-        _updateWidget();
+        
       } else {
         print('Failed to load stats: ${response.statusCode}');
         _setDefaultStats();
@@ -520,7 +519,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   'Skill': _parseStatValue(jsonResponse['skill']),
                 };
               });
-              _updateWidget();
+              
             }
             if (jsonResponse['image'] != null) {
               setState(() {
@@ -614,18 +613,4 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  void _updateWidget() {
-    print('Updating widget with stats: ${_stats['Health']}');
-    HomeWidget.saveWidgetData<String>('health', 'Health: ${((_stats['Health'] ?? 0.0) * 100).toInt()}');
-    HomeWidget.saveWidgetData<String>('energy', 'Energy: ${((_stats['Energy'] ?? 0.0) * 100).toInt()}');
-    HomeWidget.saveWidgetData<String>('mental', 'Mental: ${((_stats['Mental'] ?? 0.0) * 100).toInt()}');
-    HomeWidget.saveWidgetData<String>('wisdom', 'Wisdom: ${((_stats['Wisdom'] ?? 0.0) * 100).toInt()}');
-    HomeWidget.saveWidgetData<String>('skill', 'Skill: ${((_stats['Skill'] ?? 0.0) * 100).toInt()}');
-    
-    HomeWidget.updateWidget(
-      name: 'HomeWidgetProvider',
-      androidName: 'HomeWidgetProvider',
-      iOSName: 'HomeWidgetProvider',
-    );
-  }
 }
