@@ -303,35 +303,38 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Widget _buildAvatarSlide() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage('assets/background.jpg'),
-          fit: BoxFit.cover,
-          colorFilter: ColorFilter.mode(
-            Colors.black.withOpacity(0.5),
-            BlendMode.darken,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
+            ),
+            child: IntrinsicHeight(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Spacer(),
+                  Image.network(
+                    _avatarImageUrl,
+                    width: 500,
+                    height: 300,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        _avatarImageUrl,
+                        width: 300,
+                        height: 300,
+                        fit: BoxFit.contain,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-      child: Center(
-        child: Image.network(
-          _avatarImageUrl,
-          width: 300,
-          height: 300,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) {
-            return Image.asset(
-              _avatarImageUrl,
-              width: 300,
-              height: 300,
-              fit: BoxFit.contain,
-            );
-          },
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -339,7 +342,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: Colors.black, // Changed to full black
+      color: Colors.black.withOpacity(0.7),
       child: Center(
         child: SingleChildScrollView(
           child: Padding(
@@ -701,9 +704,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   Widget _buildCounterSlide() {
     return Container(
-      width: double.infinity,
-      height: double.infinity,
-      color: Colors.black, // Changed to full black
+      color: Colors.black.withOpacity(0.7),
       child: Center(
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
