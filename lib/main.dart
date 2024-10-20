@@ -140,6 +140,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Map<String, double> _stats = {};
   String _avatarImageUrl = 'assets/1.gif'; // Default avatar
   int _currentCarouselIndex = 0;
+  int _waterCount = 0;
+  int _cigaretteCount = 0;
+  int _lastResetTimestamp = 0;
 
   @override
   void initState() {
@@ -152,6 +155,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     // Fetch stats when the app initializes
     _fetchStats();
     NotificationService().scheduleDailyNotification(); // Schedule daily notification
+    _resetCounters(); // Add this line
   }
 
   // New method to fetch stats
@@ -278,6 +282,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         items: [
                           _buildAvatarSlide(),
                           _buildStatsSlide(),
+                          _buildCounterSlide(), // Add this line
                         ],
                       ),
                     ),
@@ -298,38 +303,35 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Widget _buildAvatarSlide() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: constraints.maxHeight,
-            ),
-            child: IntrinsicHeight(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Spacer(),
-                  Image.network(
-                    _avatarImageUrl,
-                    width: 500,
-                    height: 300,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Image.asset(
-                        _avatarImageUrl,
-                        width: 300,
-                        height: 300,
-                        fit: BoxFit.contain,
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/background.jpg'),
+          fit: BoxFit.cover,
+          colorFilter: ColorFilter.mode(
+            Colors.black.withOpacity(0.5),
+            BlendMode.darken,
           ),
-        );
-      },
+        ),
+      ),
+      child: Center(
+        child: Image.network(
+          _avatarImageUrl,
+          width: 300,
+          height: 300,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return Image.asset(
+              _avatarImageUrl,
+              width: 300,
+              height: 300,
+              fit: BoxFit.contain,
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -337,7 +339,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: Colors.black.withOpacity(0.7),
+      color: Colors.black, // Changed to full black
       child: Center(
         child: SingleChildScrollView(
           child: Padding(
@@ -697,5 +699,89 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-}
+  Widget _buildCounterSlide() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.black, // Changed to full black
+      child: Center(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildCounterButton(
+              icon: Icons.local_drink,
+              count: _waterCount,
+              onPressed: () {
+                setState(() {
+                  _waterCount++;
+                });
+              },
+              color: Colors.blue,
+            ),
+            _buildCounterButton(
+              icon: Icons.smoking_rooms,
+              count: _cigaretteCount,
+              onPressed: () {
+                setState(() {
+                  _cigaretteCount++;
+                });
+              },
+              color: Colors.red,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
+  Widget _buildCounterButton({
+    required IconData icon,
+    required int count,
+    required VoidCallback onPressed,
+    required Color color,
+  }) {
+    return Container(
+      width: 100,
+      height: 100,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon, 
+              size: 30,
+              color: Colors.black, // Changed to black
+            ),
+            SizedBox(height: 4),
+            Text(
+              count.toString(),
+              style: TextStyle(
+                fontSize: 20, 
+                fontWeight: FontWeight.bold,
+                color: Colors.black, // Changed to black
+              ),
+            ),
+          ],
+        ),
+        style: ElevatedButton.styleFrom(
+          shape: CircleBorder(),
+          padding: EdgeInsets.all(15),
+          backgroundColor: color,
+        ),
+      ),
+    );
+  }
+
+  void _resetCounters() {
+    final now = DateTime.now();
+    final lastReset = DateTime(now.year, now.month, now.day);
+    if (lastReset.isAfter(DateTime.fromMillisecondsSinceEpoch(_lastResetTimestamp))) {
+      setState(() {
+        _waterCount = 0;
+        _cigaretteCount = 0;
+        _lastResetTimestamp = lastReset.millisecondsSinceEpoch;
+      });
+    }
+  }
+}
