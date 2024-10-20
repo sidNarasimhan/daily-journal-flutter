@@ -64,6 +64,15 @@ class NotificationService {
   }
 
   NotificationDetails _notificationDetails() {
+    final BigPictureStyleInformation bigPictureStyleInformation =
+        BigPictureStyleInformation(
+      DrawableResourceAndroidBitmap("@mipmap/ic_launcher"),
+      largeIcon: DrawableResourceAndroidBitmap("@mipmap/ic_launcher"),
+      contentTitle: 'Daily Journal Reminder',
+      summaryText: 'It\'s time to write your journal entry!',
+      hideExpandedLargeIcon: false,
+    );
+
     return NotificationDetails(
       android: AndroidNotificationDetails(
         'daily_journal_channel',
@@ -71,7 +80,9 @@ class NotificationService {
         channelDescription: 'Notifications for daily journal reminders',
         importance: Importance.max,
         priority: Priority.high,
-        showWhen: false,
+        showWhen: true,
+        styleInformation: bigPictureStyleInformation,
+        largeIcon: DrawableResourceAndroidBitmap("@mipmap/ic_launcher"),
       ),
     );
   }
@@ -687,3 +698,4 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
 }
+
