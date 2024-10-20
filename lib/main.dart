@@ -4,9 +4,82 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter_carousel_widget/flutter_carousel_widget.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
-void main() {
+class NotificationService {
+  static final NotificationService _instance = NotificationService._internal();
+
+  factory NotificationService() {
+    return _instance;
+  }
+
+  NotificationService._internal();
+
+  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+
+  Future<void> init() async {
+    tz.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation('Asia/Kolkata')); // Set to IST
+
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    final InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+    );
+
+    await _notificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse details) async {
+        // Handle notification tapped logic here
+      },
+    );
+  }
+
+  Future<void> scheduleDailyNotification() async {
+    var now = tz.TZDateTime.now(tz.local);
+    var scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, 23, 0); // 11 PM
+    
+    if (scheduledDate.isBefore(now)) {
+      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    }
+
+    try {
+      await _notificationsPlugin.zonedSchedule(
+        0,
+        "Daily Journal Reminder",
+        "It's time to write your journal entry!",
+        scheduledDate,
+        _notificationDetails(),
+        androidAllowWhileIdle: true,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+
+      print('Daily notification scheduled successfully for $scheduledDate');
+    } catch (e) {
+      print('Error scheduling notification: $e');
+    }
+  }
+
+  NotificationDetails _notificationDetails() {
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        'daily_journal_channel',
+        'Daily Journal Notifications',
+        channelDescription: 'Notifications for daily journal reminders',
+        importance: Importance.max,
+        priority: Priority.high,
+        showWhen: false,
+      ),
+    );
+  }
+}
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService().init();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -67,7 +140,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     
     // Fetch stats when the app initializes
     _fetchStats();
-   
+    NotificationService().scheduleDailyNotification(); // Schedule daily notification
   }
 
   // New method to fetch stats
