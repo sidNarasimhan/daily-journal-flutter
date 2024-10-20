@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:home_widget/home_widget.dart';
+import 'package:flutter_carousel_widget/flutter_carousel_widget.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +56,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   // Add new variables for stats
   Map<String, double> _stats = {};
   String _avatarImageUrl = 'assets/1.gif'; // Default avatar
+  int _currentCarouselIndex = 0;
 
   @override
   void initState() {
@@ -156,16 +158,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
         },
         child: Scaffold(
-          resizeToAvoidBottomInset: true, // Add this line
-          body: Stack(
-            
-            children: [
-              Column(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Container(
-                      width: double.infinity,
+          resizeToAvoidBottomInset: true,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      height: MediaQuery.of(context).size.height * 0.5, // Adjust this value as needed
                       decoration: BoxDecoration(
                         image: DecorationImage(
                           image: AssetImage('assets/background.jpg'),
@@ -176,139 +179,87 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           ),
                         ),
                       ),
-                      child: Column(
-                        children: [
-                          Expanded(
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                return SingleChildScrollView(
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      minHeight: constraints.maxHeight,
-                                    ),
-                                    child: IntrinsicHeight(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.end,
-                                        children: [
-                                          Spacer(),
-                                          Image.network(
-                                            _avatarImageUrl,
-                                            width: 500,
-                                            height: 300,
-                                            fit: BoxFit.contain,
-                                            errorBuilder: (context, error, stackTrace) {
-                                              return Image.asset(
-                                                _avatarImageUrl,
-                                                width: 300,
-                                                height: 300,
-                                                fit: BoxFit.contain,
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      // child: Column(
-                      //   mainAxisAlignment: MainAxisAlignment.end,
-                      //   children: [
-                      //     Image.network(
-                      //       _avatarImageUrl,
-                      //       width: 500,
-                      //       height: 300,
-                      //       fit: BoxFit.contain,
-                      //       errorBuilder: (context, error, stackTrace) {
-                      //         return Image.asset(_avatarImageUrl, width: 300, height: 300, fit: BoxFit.contain);
-                      //       },
-                      //     ),
-                      //   ],
-                      // ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: SingleChildScrollView( // Wrap with SingleChildScrollView
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Container(
-                            margin: EdgeInsets.all(10),
-                            child: _selectedOption.isEmpty
-                                ? _buildOptionsList()
-                                : _buildInputArea(),
-                          ),
+                      child: FlutterCarousel(
+                        options: CarouselOptions(
+                          height: double.infinity,
+                          viewportFraction: 1.0,
+                          enlargeCenterPage: false,
+                          autoPlay: false,
+                          enableInfiniteScroll: false,
+                          onPageChanged: (index, reason) {
+                            setState(() {
+                              _currentCarouselIndex = index;
+                            });
+                          },
+                        ),
+                        items: [
+                          _buildAvatarSlide(),
+                          _buildStatsSlide(),
                         ],
                       ),
                     ),
+                    Padding(
+                      padding: EdgeInsets.all(10),
+                      child: _selectedOption.isEmpty
+                          ? _buildOptionsList()
+                          : _buildInputArea(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatarSlide() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
+            ),
+            child: IntrinsicHeight(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Spacer(),
+                  Image.network(
+                    _avatarImageUrl,
+                    width: 500,
+                    height: 300,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        _avatarImageUrl,
+                        width: 300,
+                        height: 300,
+                        fit: BoxFit.contain,
+                      );
+                    },
                   ),
                 ],
               ),
-              if (_statsVisible)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: MediaQuery.of(context).size.height * 0.5, // Cover the first container
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _statsVisible = false;
-                      });
-                    },
-                    child: Container(
-                      color: Colors.black.withOpacity(0.8),
-                      child: Center(
-                        child: Container(
-                          width: MediaQuery.of(context).size.width * 0.8,
-                          padding: EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: _buildStatsSection(),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              Positioned(
-                right: 0,
-                top: MediaQuery.of(context).size.height * 0.25,
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _statsVisible = !_statsVisible;
-                    });
-                  },
-                  child: Container(
-                    padding: EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(8),
-                        bottomLeft: Radius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      _statsVisible ? ">" : "<",
-                      style: TextStyle(
-                        fontFamily: 'PressStart2P',
-                        fontSize: 24,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatsSlide() {
+    return Center(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.8,
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(16),
         ),
+        child: _buildStatsSection(),
       ),
     );
   }
