@@ -163,7 +163,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             child: SingleChildScrollView(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
+                   minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
                 ),
                 child: Column(
                   children: [
@@ -251,15 +251,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Widget _buildStatsSlide() {
-    return Center(
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.8,
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
-          borderRadius: BorderRadius.circular(16),
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.black.withOpacity(0.7),
+      child: Center(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: _buildStatsSection(),
+          ),
         ),
-        child: _buildStatsSection(),
       ),
     );
   }
