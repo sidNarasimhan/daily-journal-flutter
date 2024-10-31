@@ -15,6 +15,8 @@ dependencies:
   home_widget: ^0.6.0
   flutter_carousel_widget: ^2.2.0
   flutter_local_notifications: ^17.1.2
+  shared_preferences: ^2.2.2
+  android_alarm_manager_plus: ^3.0.1
 
 dev_dependencies:
   flutter_test:
@@ -29,8 +31,20 @@ flutter:
   assets:
     - assets/1.gif 
     - assets/2.gif 
-    - assets/3.gif 
-    - assets/background.jpg  # Path to your avatar image
+    - assets/3.gif
+    - assets/4.gif
+    - assets/5.gif 
+    - assets/background1.jpg 
+    - assets/background2.jpg
+    - assets/background3.jpg
+    - assets/background4.jpg
+    - assets/background5.jpg
+    - assets/background1.gif 
+    - assets/background2.gif
+    - assets/background3.gif
+    - assets/background4.gif
+    - assets/background5.gif
+    # Path to your avatar image
 
   # Define the fonts folder to include fonts
   fonts:

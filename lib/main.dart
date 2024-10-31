@@ -7,6 +7,8 @@ import 'package:flutter_carousel_widget/flutter_carousel_widget.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -20,9 +22,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
-    tz.initializeTimeZones();
-    tz.setLocalLocation(tz.getLocation('Asia/Kolkata')); // Set to IST
-
+    print("Initializing NotificationService");
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     final InitializationSettings initializationSettings = InitializationSettings(
@@ -32,59 +32,55 @@ class NotificationService {
     await _notificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse details) async {
-        // Handle notification tapped logic here
+        print("Notification received: ${details.payload}");
       },
     );
+    print("NotificationService initialized");
+    await AndroidAlarmManager.initialize();
+    _scheduleDaily11PMAlarm();
   }
 
-  Future<void> scheduleDailyNotification() async {
-    var now = tz.TZDateTime.now(tz.local);
-    var scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, 23, 0); // 11 PM
+  void _scheduleDaily11PMAlarm() {
+    AndroidAlarmManager.periodic(
+      const Duration(days: 1),
+      0, // Unique ID for this alarm
+      _showNotification,
+      startAt: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 0),
+      exact: true,
+      wakeup: true,
+      rescheduleOnReboot: true,
+    );
+  }
+
+  @pragma('vm:entry-point')
+  static Future<void> _showNotification() async {
+    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
     
-    if (scheduledDate.isBefore(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
-    }
-
-    try {
-      await _notificationsPlugin.zonedSchedule(
-        0,
-        "Daily Journal Reminder",
-        "It's time to write your journal entry!",
-        scheduledDate,
-        _notificationDetails(),
-        androidAllowWhileIdle: true,
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
-
-      print('Daily notification scheduled successfully for $scheduledDate');
-    } catch (e) {
-      print('Error scheduling notification: $e');
-    }
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+      'daily_journal_channel',
+      'Daily Journal Notifications',
+      channelDescription: 'Notifications for daily journal reminders',
+      importance: Importance.max,
+      priority: Priority.high,
+      showWhen: true,
+    );
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+    
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'Daily Journal Reminder',
+      'It\'s time to write your journal entry!',
+      platformChannelSpecifics,
+    );
+    print('Notification sent at ${DateTime.now()}');
   }
 
-  NotificationDetails _notificationDetails() {
-    final BigPictureStyleInformation bigPictureStyleInformation =
-        BigPictureStyleInformation(
-      DrawableResourceAndroidBitmap("@mipmap/ic_launcher"),
-      largeIcon: DrawableResourceAndroidBitmap("@mipmap/ic_launcher"),
-      contentTitle: 'Daily Journal Reminder',
-      summaryText: 'It\'s time to write your journal entry!',
-      hideExpandedLargeIcon: false,
-    );
-
-    return NotificationDetails(
-      android: AndroidNotificationDetails(
-        'daily_journal_channel',
-        'Daily Journal Notifications',
-        channelDescription: 'Notifications for daily journal reminders',
-        importance: Importance.max,
-        priority: Priority.high,
-        showWhen: true,
-        styleInformation: bigPictureStyleInformation,
-        largeIcon: DrawableResourceAndroidBitmap("@mipmap/ic_launcher"),
-      ),
-    );
+  // For testing purposes
+  Future<void> showTestNotification() async {
+    await _showNotification();
   }
 }
 
@@ -129,6 +125,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String _blinkingOption = "Enter Daily Journal";
   TextEditingController _inputController = TextEditingController();
   late AnimationController _animationController;
+  late Animation<double> _animation;
   bool _showingResponse = false;
   String _fullResponse = "";
   int _responseIndex = 0;
@@ -143,25 +140,72 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   int _waterCount = 0;
   int _cigaretteCount = 0;
   int _lastResetTimestamp = 0;
+  int _pornStreak = 0;
+  int _workoutStreak = 0;
+  int _currentBackgroundIndex = 1;
+  bool _showWelcomeMessage = true;
+  String _welcomeText = "";
+  int _welcomeIndex = 0;
+  final String _fullWelcomeText = "Welcome to your Daily Journal";
+  String _optionWelcomeText = "";
+  int _optionWelcomeIndex = 0;
+  bool _showOptionWelcome = false;
+  bool _isShowingMessage = false; // Add this line
 
   @override
   void initState() {
     super.initState();
+    _loadCounters();
+    _loadStatsLocally();
+    _fetchStats();
+    NotificationService().init();
+    
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
-    )..repeat(reverse: true);
-    
-    // Fetch stats when the app initializes
-    _fetchStats();
-    NotificationService().scheduleDailyNotification(); // Schedule daily notification
-    _resetCounters(); // Add this line
+    );
+    _animationController.repeat(reverse: true);
+
+    // Start typing the welcome message
+    _typeWelcomeMessage();
+    _updateStreaksDaily();
+  }
+
+
+  void _loadCounters() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _waterCount = prefs.getInt('waterCount') ?? 0;
+      _cigaretteCount = prefs.getInt('cigaretteCount') ?? 0;
+      _lastResetTimestamp = prefs.getInt('lastResetTimestamp') ?? 0;
+    });
+    _resetCountersIfNewDay();
+  }
+
+  void _saveCounters() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('waterCount', _waterCount);
+    await prefs.setInt('cigaretteCount', _cigaretteCount);
+    await prefs.setInt('lastResetTimestamp', _lastResetTimestamp);
+  }
+
+  void _resetCountersIfNewDay() {
+    final now = DateTime.now();
+    final lastReset = DateTime.fromMillisecondsSinceEpoch(_lastResetTimestamp);
+    if (now.day != lastReset.day || now.month != lastReset.month || now.year != lastReset.year) {
+      setState(() {
+        _waterCount = 0;
+        _cigaretteCount = 0;
+        _lastResetTimestamp = now.millisecondsSinceEpoch;
+      });
+      _saveCounters();
+    }
   }
 
   // New method to fetch stats
   Future<void> _fetchStats() async {
     try {
-      final response = await http.get(Uri.parse('https://daily-journal-be.onrender.com/api/stats'));
+      final response = await http.get(Uri.parse('https://daily-journal-be-1.onrender.com/api/stats'));
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
         
@@ -171,10 +215,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             'Energy': _parseStatValue(jsonResponse['energy']),
             'Mental': _parseStatValue(jsonResponse['mental']),
             'Wisdom': _parseStatValue(jsonResponse['intellect']),
-            
             'Skill': _parseStatValue(jsonResponse['skill']),
           };
-          // Update avatar image URL based on the number returned by the API
+          // print(jsonResponse['porn_streak']);
+          // _pornStreak = jsonResponse['porn_streak'] ?? 0;
+          // _workoutStreak = jsonResponse['workout_streak'] ?? 0;
+          
           if (jsonResponse['image'] != null) {
             int imageNumber = jsonResponse['image'] as int;
             _avatarImageUrl = 'assets/$imageNumber.gif';
@@ -183,12 +229,37 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           }
         });
         
+        // Save to local storage
+        _saveStatsLocally();
       } else {
         print('Failed to load stats: ${response.statusCode}');
-        _setDefaultStats();
+        _loadStatsLocally();
       }
     } catch (e) {
       print('Error fetching stats: $e');
+      _loadStatsLocally();
+    }
+  }
+
+  void _saveStatsLocally() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('pornStreak', _pornStreak);
+    await prefs.setInt('workoutStreak', _workoutStreak);
+    await prefs.setString('stats', jsonEncode(_stats));
+    await prefs.setString('avatarImageUrl', _avatarImageUrl);
+    await prefs.setInt('currentBackgroundIndex', _currentBackgroundIndex);
+  }
+
+  void _loadStatsLocally() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _pornStreak = prefs.getInt('pornStreak') ?? 0;
+      _workoutStreak = prefs.getInt('workoutStreak') ?? 0;
+      _stats = Map<String, double>.from(jsonDecode(prefs.getString('stats') ?? '{}'));
+      _avatarImageUrl = prefs.getString('avatarImageUrl') ?? 'assets/1.gif';
+      _currentBackgroundIndex = prefs.getInt('currentBackgroundIndex') ?? 1;
+    });
+    if (_stats.isEmpty) {
       _setDefaultStats();
     }
   }
@@ -221,8 +292,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   @override
   void dispose() {
-    _stopLoadingAnimation();
     _animationController.dispose();
+    _stopLoadingAnimation();
     super.dispose();
   }
 
@@ -255,17 +326,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 child: Column(
                   children: [
                     Container(
-                      height: MediaQuery.of(context).size.height * 0.5, // Adjust this value as needed
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: AssetImage('assets/background.jpg'),
-                          fit: BoxFit.cover,
-                          colorFilter: ColorFilter.mode(
-                            Colors.black.withOpacity(0.5),
-                            BlendMode.darken,
-                          ),
-                        ),
-                      ),
+                      height: MediaQuery.of(context).size.height * 0.5,
                       child: FlutterCarousel(
                         options: CarouselOptions(
                           height: double.infinity,
@@ -281,16 +342,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         ),
                         items: [
                           _buildAvatarSlide(),
+                          _buildCounterSlide(),
                           _buildStatsSlide(),
-                          _buildCounterSlide(), // Add this line
                         ],
                       ),
                     ),
                     Padding(
                       padding: EdgeInsets.all(10),
-                      child: _selectedOption.isEmpty
-                          ? _buildOptionsList()
-                          : _buildInputArea(),
+                      child: _showWelcomeMessage
+                          ? _buildWelcomeMessage()
+                          : (_selectedOption.isEmpty
+                              ? _buildOptionsList()
+                              : _buildInputArea()),
                     ),
                   ],
                 ),
@@ -303,38 +366,39 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Widget _buildAvatarSlide() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: constraints.maxHeight,
-            ),
-            child: IntrinsicHeight(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Spacer(),
-                  Image.network(
-                    _avatarImageUrl,
-                    width: 500,
-                    height: 300,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Image.asset(
-                        _avatarImageUrl,
-                        width: 300,
-                        height: 300,
-                        fit: BoxFit.contain,
-                      );
-                    },
-                  ),
-                ],
-              ),
+    return GestureDetector(
+      onDoubleTap: () {
+        setState(() {
+          _currentBackgroundIndex = (_currentBackgroundIndex % 5) + 1;
+        });
+      },
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/background$_currentBackgroundIndex.gif'),
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              Colors.black.withOpacity(0.1),
+              BlendMode.darken,
             ),
           ),
-        );
-      },
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Image.asset(
+              _showingResponse && _responseText.isEmpty
+                ? 'assets/4.gif'
+                : (_isShowingMessage ? 'assets/5.gif' : _avatarImageUrl),
+               width: 800,
+              height: 300,
+              fit: BoxFit.contain,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -342,7 +406,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: Colors.black.withOpacity(0.7),
+      color: Colors.black,
       child: Center(
         child: SingleChildScrollView(
           child: Padding(
@@ -465,6 +529,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 _blinkingOption = "";
                 _inputController.clear();
               });
+              // Add welcome message for each option
+              switch (title) {
+                case "Enter Daily Journal":
+                  _typeOptionWelcome("What's up? How was your day?");
+                  break;
+                case "Ask a Question":
+                  _typeOptionWelcome("What's on your mind?");
+                  break;
+                case "Enter Personal Details":
+                  _typeOptionWelcome("Let me get to know you better");
+                  break;
+              }
             } else {
               setState(() {
                 _blinkingOption = _blinkingOption == title ? "" : title;
@@ -530,27 +606,37 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _showingResponse
-              ? Text(
-                  _responseText.isEmpty ? _loadingText : _responseText,
-                  style: TextStyle(fontSize: 16, color: Colors.white),
-                )
-              : TextField(
-                  controller: _inputController,
-                  decoration: InputDecoration(
-                    hintText: placeholder,
-                    hintStyle: TextStyle(fontFamily: 'PressStart2P', fontSize: 16, color: Colors.white70),
-                    border: InputBorder.none,
-                    filled: true,
-                    fillColor: Colors.transparent,
-                    contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  ),
-                  style: TextStyle(fontSize: 16, color: Colors.white),
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.send, // Change this to send
-                  onSubmitted: (_) => _sendToApi(), // Add this line
-                ),
+          if (_showOptionWelcome)
+            Text(
+              _optionWelcomeText,
+              style: TextStyle(
+                fontFamily: 'PressStart2P',
+                fontSize: 18,
+                color: Colors.white,
+              ),
+            )
+          else if (_showingResponse)
+            Text(
+              _responseText.isEmpty ? _loadingText : _responseText,
+              style: TextStyle(fontSize: 16, color: Colors.white),
+            )
+          else
+            TextField(
+              controller: _inputController,
+              decoration: InputDecoration(
+                hintText: placeholder,
+                hintStyle: TextStyle(fontFamily: 'PressStart2P', fontSize: 16, color: Colors.white70),
+                border: InputBorder.none,
+                filled: true,
+                fillColor: Colors.transparent,
+                contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              ),
+              style: TextStyle(fontSize: 16, color: Colors.white),
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.send, // Change this to send
+              onSubmitted: (_) => _sendToApi(), // Add this line
+            ),
         ],
       ),
     );
@@ -561,27 +647,32 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       setState(() {
         _showingResponse = true;
         _loadingText = "Hmm"; // Set initial state
+        _isShowingMessage = false; // Show loading GIF
       });
-
+ 
       _startLoadingAnimation();
-
+ 
       try {
         late http.Response response;
         
         if (_selectedOption == "Enter Daily Journal") {
           response = await http.post(
-            Uri.parse('https://daily-journal-be.onrender.com/api/daily-entry'),
+            Uri.parse('https://daily-journal-be-1.onrender.com/api/daily-entry'),
             headers: <String, String>{
               'Content-Type': 'application/json; charset=UTF-8',
             },
-            body: jsonEncode(<String, String>{
+            body: jsonEncode(<String, dynamic>{
               'date': DateTime.now().toIso8601String().split('T')[0],
               'entry': _inputController.text,
+              'water': _waterCount,
+              'smoke': _cigaretteCount,
+              'porn_streak': _pornStreak,
+              'workout_streak': _workoutStreak,
             }),
           );
         } else if (_selectedOption == "Ask a Question") {
           response = await http.post(
-            Uri.parse('https://daily-journal-be.onrender.com/api/ask'),
+            Uri.parse('https://daily-journal-be-1.onrender.com/api/ask'),
             headers: <String, String>{
               'Content-Type': 'application/json; charset=UTF-8',
             },
@@ -590,13 +681,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             }),
           );
         }
-
+ 
         _stopLoadingAnimation();
-
+ 
         if (response.statusCode == 200) {
           final jsonResponse = jsonDecode(response.body);
           if (_selectedOption == "Enter Daily Journal") {
             _fullResponse = jsonResponse['message'];
+            setState(() {
+              _isShowingMessage = true; // Show message GIF
+            });
             // Update stats and avatar image
             if (jsonResponse != null) {
               setState(() {
@@ -607,13 +701,22 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   'Wisdom': _parseStatValue(jsonResponse['intellect']),
                   'Skill': _parseStatValue(jsonResponse['skill']),
                 };
+                // Update streaks if provided in the response
+                // if (jsonResponse['porn_streak'] != null) {
+                //   _pornStreak = jsonResponse['porn_streak'];
+                // }
+                // if (jsonResponse['workout_streak'] != null) {
+                //   _workoutStreak = jsonResponse['workout_streak'];
+                // }
               });
-              
+              print(_stats);
+              _saveStatsLocally();  // Save updated stats and streaks
             }
             if (jsonResponse['image'] != null) {
               setState(() {
                 _avatarImageUrl = 'assets/${jsonResponse['image']}.gif';
               });
+              _saveStatsLocally();  // Save updated avatar image
             }
           } else if (_selectedOption == "Ask a Question") {
             _fullResponse = jsonResponse['answer'];
@@ -623,16 +726,45 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         } else {
           _fullResponse = "Error: ${response.statusCode}";
           _responseIndex = 0;
+          setState(() {
+            _isShowingMessage = true; // Show message GIF
+          });
           _typeResponse();
         }
       } catch (e) {
         _stopLoadingAnimation();
         _fullResponse = "Error: $e";
         _responseIndex = 0;
+        setState(() {
+          _isShowingMessage = true; // Show message GIF
+        });
         _typeResponse();
       }
-
+ 
       _inputController.clear();
+    }
+  }
+ 
+  Future<void> _updateStreaksInDB() async {
+    try {
+      final response = await http.post(
+        Uri.parse('https://daily-journal-be-1.onrender.com/api/update-streak'),
+        headers: <String, String>{
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: jsonEncode(<String, dynamic>{
+          'pornStreak': _pornStreak,
+          'workoutStreak': _workoutStreak,
+        }),
+      );
+ 
+      if (response.statusCode == 200) {
+        print('Streaks updated successfully in DB');
+      } else {
+        print('Failed to update streaks in DB: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error updating streaks in DB: $e');
     }
   }
 
@@ -670,13 +802,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       setState(() {
         _responseText = _fullResponse.substring(0, _responseIndex + 1);
         _responseIndex++;
+        _isShowingMessage = true; // Show message GIF
       });
       Future.delayed(Duration(milliseconds: 50), _typeResponse);
     } else {
-      Future.delayed(Duration(seconds: 2), () { // Changed to 2 seconds
+      Future.delayed(Duration(seconds: 2), () {
         setState(() {
           _showingResponse = false;
           _responseText = "";
+          _isShowingMessage = false; // Reset to default GIF
         });
       });
     }
@@ -690,13 +824,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       case 'Energy':
         return Color(0xFF3CB371);
       case 'Mental':
-        return Color(0xFF6A5ACD);
+        return Colors.blue;
       case 'Wisdom':
         return Color(0xFFFFA500);
       case 'Charisma':
         return Color(0xFF008080);
       case 'Skill':
-        return Color(0xFF4B0082);
+        return Color(0xFF6A5ACD);
       default:
         return Colors.grey;
     }
@@ -704,33 +838,78 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   Widget _buildCounterSlide() {
     return Container(
-      color: Colors.black.withOpacity(0.7),
-      child: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildCounterButton(
-              icon: Icons.local_drink,
-              count: _waterCount,
-              onPressed: () {
-                setState(() {
-                  _waterCount++;
-                });
-              },
-              color: Colors.blue,
-            ),
-            _buildCounterButton(
-              icon: Icons.smoking_rooms,
-              count: _cigaretteCount,
-              onPressed: () {
-                setState(() {
-                  _cigaretteCount++;
-                });
-              },
-              color: Colors.red,
-            ),
-          ],
-        ),
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.black,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildCounterButton(
+                icon: Icons.no_adult_content,
+                count: _pornStreak,
+                onPressed: () {}, // Do nothing on press
+                onLongPress: () => _updateStreak('porn', true), // Only reset on long press
+                color: Colors.purple,
+              ),
+              _buildCounterButton(
+                icon: Icons.fitness_center,
+                count: _workoutStreak,
+                onPressed: () => _updateStreak('workout', false), // Increment on normal press
+                onLongPress: () => _updateStreak('workout', true), // Reset on long press
+                color: Colors.yellow,
+              ),
+            ],
+          ),
+          SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildCounterButton(
+                icon: Icons.local_drink,
+                count: _waterCount,
+                onPressed: () {
+                  setState(() {
+                    _waterCount++;
+                  });
+                  _saveCounters();
+                },
+                onLongPress: () {
+                  setState(() {
+                    _waterCount = 0;
+                  });
+                  _saveCounters();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Water count reset to 0')),
+                  );
+                },
+                color: Colors.blue,
+              ),
+              _buildCounterButton(
+                icon: Icons.smoking_rooms,
+                count: _cigaretteCount,
+                onPressed: () {
+                  setState(() {
+                    _cigaretteCount++;
+                  });
+                  _saveCounters();
+                },
+                onLongPress: () {
+                  setState(() {
+                    _cigaretteCount = 0;
+                  });
+                  _saveCounters();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Cigarette count reset to 0')),
+                  );
+                },
+                color: Colors.red,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -739,50 +918,212 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     required IconData icon,
     required int count,
     required VoidCallback onPressed,
+    VoidCallback? onLongPress,
     required Color color,
   }) {
-    return Container(
-      width: 100,
-      height: 100,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon, 
-              size: 30,
-              color: Colors.black, // Changed to black
-            ),
-            SizedBox(height: 4),
-            Text(
-              count.toString(),
-              style: TextStyle(
-                fontSize: 20, 
-                fontWeight: FontWeight.bold,
-                color: Colors.black, // Changed to black
+    return _AnimatedButton(
+      child: Container(
+        width: 100,
+        height: 100,
+        child: ElevatedButton(
+          onPressed: onPressed,
+          onLongPress: onLongPress,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon, 
+                size: 40,
+                color: Colors.black,
               ),
-            ),
-          ],
-        ),
-        style: ElevatedButton.styleFrom(
-          shape: CircleBorder(),
-          padding: EdgeInsets.all(15),
-          backgroundColor: color,
+              SizedBox(height: 4),
+              Text(
+                count.toString(),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          style: ElevatedButton.styleFrom(
+            shape: CircleBorder(),
+            padding: EdgeInsets.all(15),
+            backgroundColor: color,
+          ),
         ),
       ),
     );
   }
 
-  void _resetCounters() {
-    final now = DateTime.now();
-    final lastReset = DateTime(now.year, now.month, now.day);
-    if (lastReset.isAfter(DateTime.fromMillisecondsSinceEpoch(_lastResetTimestamp))) {
+  void _updateStreak(String streakType, bool reset) {
+    setState(() {
+      if (reset) {
+        if (streakType == 'porn') {
+          _pornStreak = 0;
+        } else if (streakType == 'workout') {
+          _workoutStreak = 0;
+        }
+      } else {
+        if (streakType == 'workout') {
+          _updateWorkoutStreak();
+        }
+        // Porn streak is not incremented here anymore
+      }
+    });
+    _saveStatsLocally();  // Save updated streak values locally
+  
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$streakType streak ${reset ? "reset" : "updated"}')),
+    );
+  }
+
+  Widget _buildWelcomeMessage() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text(
+          _welcomeText,
+          style: TextStyle(
+            fontFamily: 'PressStart2P',
+            fontSize: 18,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _typeWelcomeMessage() {
+    setState(() {
+      _isShowingMessage = true;
+    });
+    if (_welcomeIndex < _fullWelcomeText.length) {
       setState(() {
-        _waterCount = 0;
-        _cigaretteCount = 0;
-        _lastResetTimestamp = lastReset.millisecondsSinceEpoch;
+        _welcomeText = _fullWelcomeText.substring(0, _welcomeIndex + 1);
+        _welcomeIndex++;
+      });
+      Future.delayed(Duration(milliseconds: 50), _typeWelcomeMessage);
+    } else {
+      Future.delayed(Duration(milliseconds: 1500), () {
+        setState(() {
+          _showWelcomeMessage = false;
+          _isShowingMessage = false;
+        });
       });
     }
   }
+
+  void _typeOptionWelcome(String message) {
+    _optionWelcomeText = "";
+    _optionWelcomeIndex = 0;
+    setState(() {
+      _showOptionWelcome = true;
+      _isShowingMessage = true;
+    });
+    
+    void typeNextLetter() {
+      if (_optionWelcomeIndex < message.length) {
+        setState(() {
+          _optionWelcomeText = message.substring(0, _optionWelcomeIndex + 1);
+          _optionWelcomeIndex++;
+        });
+        Future.delayed(Duration(milliseconds: 50), typeNextLetter);
+      } else {
+        Future.delayed(Duration(milliseconds: 1500), () {
+          setState(() {
+            _showOptionWelcome = false;
+            _isShowingMessage = false;
+          });
+        });
+      }
+    }
+ 
+    typeNextLetter();
+  }
+
+  // Add this method to your _HomePageState class
+  void _updateStreaksDaily() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastUpdateDate = prefs.getString('lastStreakUpdate') ?? '';
+    final today = DateTime.now().toIso8601String().split('T')[0];
+ 
+    if (lastUpdateDate != today) {
+      setState(() {
+        _pornStreak++;  // Increment porn streak
+        _workoutStreak = 0;  // Reset workout streak
+      });
+      await prefs.setString('lastStreakUpdate', today);
+      await prefs.setString('lastWorkoutDate', '');  // Reset last workout date
+      _saveStatsLocally();
+    }
+  }
+ 
+  void _updateWorkoutStreak() {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    SharedPreferences.getInstance().then((prefs) {
+      final lastWorkoutDate = prefs.getString('lastWorkoutDate') ?? '';
+      print (lastWorkoutDate);
+      if (lastWorkoutDate != today) {
+        setState(() {
+          _workoutStreak++;
+        });
+        prefs.setString('lastWorkoutDate', today);
+        _saveStatsLocally();
+      }
+    });
+  }
 }
+
+class _AnimatedButton extends StatefulWidget {
+  final Widget child;
+
+  const _AnimatedButton({Key? key, required this.child}) : super(key: key);
+
+  @override
+  _AnimatedButtonState createState() => _AnimatedButtonState();
+}
+
+class _AnimatedButtonState extends State<_AnimatedButton> with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _animation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _animationController.forward(),
+      onTapUp: (_) => _animationController.reverse(),
+      onTapCancel: () => _animationController.reverse(),
+      child: AnimatedBuilder(
+        animation: _animation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _animation.value,
+            child: widget.child,
+          );
+        },
+      ),
+    );
+  }
+}
+
